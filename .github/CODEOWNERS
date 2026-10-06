@@ -1,8 +1,8 @@
 # Replace @YOUR-USERNAME with your GitHub username (or a team) before using.
 # Files that change HOW the agents behave need a human owner's approval.
-/agents/        @YOUR-USERNAME
-/CLAUDE.md      @YOUR-USERNAME
-/.github/       @YOUR-USERNAME
-/intent.md      @YOUR-USERNAME
-/docs/logic.js  @YOUR-USERNAME
-/app/lib/       @YOUR-USERNAME
+/agents/        @VarunSanneboyina
+/CLAUDE.md      @VarunSanneboyina
+/.github/       @VarunSanneboyina
+/intent.md      @VarunSanneboyina
+/docs/logic.js  @VarunSanneboyina
+/app/lib/       @VarunSanneboyina
