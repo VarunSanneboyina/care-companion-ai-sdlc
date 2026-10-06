@@ -1,0 +1,26 @@
+# When the product owner approves, say what happens next.
+name: Product owner handoff
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+
+jobs:
+  approved:
+    if: github.event.label.name == 'po:approved'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          LABELS: ${{ join(github.event.issue.labels.*.name, ',') }}
+        run: |
+          if echo "$LABELS" | grep -q "risk:engineer"; then
+            MSG="Approved by the product owner. This change is in the **engineer lane**: the code agent may prepare a pull request, but an engineer must review it using agents/engineer-review-checklist.md before it can merge."
+          else
+            MSG="Approved by the product owner. This change is in the **fast lane**: the code agent may prepare a pull request. Tests and the Definition of Ready check must pass before a human merges."
+          fi
+          gh issue comment "$ISSUE" --body "$MSG"

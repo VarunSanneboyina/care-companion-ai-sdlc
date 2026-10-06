@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Companion Control Room</title>
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  .board { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .col { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:8px; min-height:140px; }
+  .col h3 { margin:0 0 6px; font-size:.85rem; display:flex; justify-content:space-between; }
+  .req { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:8px; margin-bottom:6px; font-size:.88rem; }
+  .agents { display:flex; flex-wrap:wrap; gap:8px; }
+  .agent { text-align:left; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+  .agent small { display:block; color:var(--muted); }
+  .flow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:.85rem; color:var(--muted); }
+  .flow b { color:var(--ink); background:var(--card); border:1px solid var(--line); padding:3px 9px; border-radius:999px; font-weight:500; }
+  .feed td:first-child { white-space:nowrap; color:var(--muted); width:1%; }
+  @media (max-width:900px) { .board { grid-template-columns:1fr 1fr; } }
+  @media (max-width:560px) { .board { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1>Control Room</h1><div class="sub">Live view of every change request moving through the AI SDLC</div></div>
+  <nav><a id="lnk-ws" href="#">Request workspace</a><a id="lnk-pt" href="#">Patient portal</a></nav>
+  <div class="row"><span id="badge" class="badge-live chip">…</span><span id="rolebar"></span></div>
+</header>
+<main>
+  <div class="card">
+    <div class="flow">
+      <b>Request</b>→<b>Interviewer agent</b>→<b>Spec drafter</b>→<b>Risk-check agent</b>→<b>Product owner</b>→<b>Engineer (if flagged)</b>→<b>Code + test agents</b>→<b>Merge + deploy</b>
+    </div>
+    <p class="muted" style="margin:8px 0 0">Click any agent below to see the exact instruction file it is given.</p>
+    <div class="agents" id="agents" style="margin-top:8px"></div>
+  </div>
+
+  <div class="board" id="board"></div>
+
+  <div class="row" style="margin-top:14px;align-items:stretch">
+    <div class="card grow" style="flex:2 1 380px">
+      <h2>Activity log</h2>
+      <p class="muted">Every decision, by whom, and when. This is the audit trail.</p>
+      <table class="feed"><tbody id="feed"></tbody></table>
+    </div>
+    <div class="card grow">
+      <h2>Feature switch</h2>
+      <p class="muted">Blood pressure tracking in the patient portal. Switching it off is the kill switch: the feature disappears immediately without a new release.</p>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:1rem"><input type="checkbox" id="flagbp" style="width:auto"> Blood pressure tracking</label>
+      <div class="err" id="flagerr"></div>
+      <p class="muted">Only the product owner or an engineer can change this. Use the "Acting as" menu.</p>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script src="shared/shared.js"></script>
+<script>
+  var L = links(); $('lnk-ws').href = L.workspace || '#'; $('lnk-pt').href = L.patient || '#';
+  mountRoleBar($('rolebar'), refresh);
+  modelBadge($('badge'));
+  var COLS = [
+    ['intake', 'Intake', ['intake', 'changes_requested']],
+    ['po', 'Product owner', ['po_review']],
+    ['eng', 'Engineer', ['engineer_review']],
+    ['ok', 'Approved', ['approved']],
+    ['live', 'Live', ['released']],
+  ];
+  async function refresh() {
+    try {
+      var s = await api('/api/state');
+      $('agents').innerHTML = s.agents.map(function (a) { return '<button class="agent" data-p="' + esc(a.path) + '">' + esc(a.title) + '<small>' + esc(a.path) + '</small></button>'; }).join('') +
+        ['intent.md', 'CLAUDE.md', 'templates/intent-template.md', '.github/CODEOWNERS'].map(function (p) { return '<button class="agent ghost" data-p="' + p + '">' + esc(p) + '<small>file</small></button>'; }).join('');
+      document.querySelectorAll('.agent').forEach(function (b) { b.onclick = function () { showFile(b.dataset.p); }; });
+      $('board').innerHTML = COLS.map(function (c) {
+        var items = s.requests.filter(function (r) { return c[2].indexOf(r.status) >= 0; });
+        return '<div class="col"><h3>' + c[1] + '<span class="chip">' + items.length + '</span></h3>' + (items.map(function (r) {
+          return '<div class="req"><strong>' + esc(r.id) + '</strong> ' + esc(r.title) + '<div style="margin-top:4px">' +
+            (r.verdict ? '<span class="chip ' + (r.verdict === 'HUMAN_REVIEW' ? 'warn' : 'ok') + '">' + (r.verdict === 'HUMAN_REVIEW' ? 'engineer lane' : 'fast lane') + '</span> ' : '') +
+            (r.status === 'changes_requested' ? '<span class="chip warn">changes requested</span> ' : '') +
+            (r.openDecisions ? '<span class="chip warn">' + r.openDecisions + ' open decision' + (r.openDecisions > 1 ? 's' : '') + '</span>' : '') + '</div></div>';
+        }).join('') || '<span class="muted">Empty</span>') + '</div>';
+      }).join('');
+      $('feed').innerHTML = s.audit.slice(0, 25).map(function (a) {
+        return '<tr><td>' + fmtTime(a.ts) + '</td><td><strong>' + esc(a.actor) + '</strong> ' + esc(a.event) + (a.reqId ? ' <span class="chip">' + esc(a.reqId) + '</span>' : '') + '<div class="muted">' + esc(a.detail) + '</div></td></tr>';
+      }).join('') || '<tr><td class="muted">No activity yet. Create a request in the workspace.</td></tr>';
+      $('flagbp').checked = !!s.flags.bp;
+    } catch (e) { $('feed').innerHTML = '<tr><td class="err">' + esc(e.message) + '</td></tr>'; }
+  }
+  $('flagbp').onchange = async function () {
+    var want = $('flagbp').checked; $('flagerr').textContent = '';
+    try { await api('/api/flags', { method: 'POST', body: { bp: want } }); toast('Blood pressure tracking ' + (want ? 'ON' : 'OFF')); }
+    catch (e) { $('flagerr').textContent = e.message; $('flagbp').checked = !want; }
+    refresh();
+  };
+  refresh(); setInterval(refresh, 4000);
+</script>
+</body>
+</html>

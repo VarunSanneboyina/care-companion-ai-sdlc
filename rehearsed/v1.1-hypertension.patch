@@ -1,0 +1,167 @@
+diff --git a/docs/index.html b/docs/index.html
+index 21a516b..828536a 100644
+--- a/docs/index.html
++++ b/docs/index.html
+@@ -40,7 +40,7 @@
+ 
+   <div class="card">
+     <table>
+-      <thead><tr><th>Patient</th><th>Latest HbA1c</th><th>Date</th><th>Status</th></tr></thead>
++      <thead><tr><th>Patient</th><th>Latest HbA1c</th><th>Date</th><th>Status</th><th>Blood pressure</th></tr></thead>
+       <tbody id="rows"></tbody>
+     </table>
+   </div>
+@@ -51,6 +51,8 @@
+       <div><label for="p">Patient</label><select id="p"></select></div>
+       <div><label for="v">HbA1c (%)</label><input id="v" inputmode="decimal" placeholder="7.4"></div>
+       <div><label for="d">Date</label><input id="d" type="date"></div>
++      <div><label for="sys">Systolic</label><input id="sys" inputmode="numeric" placeholder="120" style="width:90px"></div>
++      <div><label for="dia">Diastolic</label><input id="dia" inputmode="numeric" placeholder="80" style="width:90px"></div>
+       <div style="align-self:end"><button id="add">Add</button></div>
+     </div>
+     <div class="err" id="err" role="alert"></div>
+@@ -79,9 +81,13 @@
+       var tr = document.createElement('tr');
+       [p.name, r.a1c.toFixed(1), r.date].forEach(function (t) { var td = document.createElement('td'); td.textContent = t; tr.appendChild(td); });
+       var td = document.createElement('td'); td.textContent = s; td.className = s === 'Above target' ? 'above' : 'at'; tr.appendChild(td);
++      var bt = document.createElement('td');
++      var withBp = p.readings.filter(function (x) { return x.sys; }).pop();
++      if (withBp) { var bs = L.bpStatus(withBp.sys, withBp.dia); bt.textContent = withBp.sys + '/' + withBp.dia + ' ' + bs; bt.className = bs === 'Above target' ? 'above' : 'at'; } else bt.textContent = 'No reading';
++      tr.appendChild(bt);
+       tb.appendChild(tr);
+     });
+-    if (!list.length) tb.innerHTML = '<tr><td colspan="4">No patients match.</td></tr>';
++    if (!list.length) tb.innerHTML = '<tr><td colspan="5">No patients match.</td></tr>';
+   }
+ 
+   patients.forEach(function (p, i) { var o = document.createElement('option'); o.value = i; o.textContent = p.name; $('p').appendChild(o); });
+@@ -89,9 +95,9 @@
+   $('q').addEventListener('input', render);
+   $('sort').addEventListener('change', render);
+   $('add').addEventListener('click', function () {
+-    var res = L.addReading(patients[Number($('p').value)], $('v').value, $('d').value);
++    var res = L.addReading(patients[Number($('p').value)], $('v').value, $('d').value, $('sys').value, $('dia').value);
+     $('err').textContent = res.ok ? '' : res.error;
+-    if (res.ok) { $('v').value = ''; render(); }
++    if (res.ok) { $('v').value = ''; $('sys').value = ''; $('dia').value = ''; render(); }
+   });
+   render();
+ </script>
+diff --git a/docs/logic.js b/docs/logic.js
+index 810cbdd..45c4be6 100644
+--- a/docs/logic.js
++++ b/docs/logic.js
+@@ -2,7 +2,9 @@
+ // Sample data only. Not medical advice.
+ (function (root) {
+   // Targets are set by clinicians in configuration (intent.md: Rules and limits).
+-  var CONFIG = { a1cTarget: 7.0, a1cMin: 3.0, a1cMax: 20.0 };
++  var CONFIG = { a1cTarget: 7.0, a1cMin: 3.0, a1cMax: 20.0,
++                   // SAMPLE ONLY placeholders. Real values need clinical sign-off (decision D2).
++                   bpSystolicTarget: 130, bpDiastolicTarget: 80 };
+ 
+   function validateHbA1c(value) {
+     var n = Number(value);
+@@ -19,6 +21,18 @@
+     return value <= CONFIG.a1cTarget ? 'At or below target' : 'Above target';
+   }
+ 
++  function validateBP(sys, dia) {
++    var s = Number(sys), d = Number(dia);
++    if (sys === '' || dia === '' || !isFinite(s) || !isFinite(d)) return { ok: false, error: 'Enter both blood pressure numbers.' };
++    if (s < 50 || s > 300 || d < 30 || d > 200) return { ok: false, error: 'Blood pressure is outside the possible range.' };
++    if (s <= d) return { ok: false, error: 'Systolic must be higher than diastolic.' };
++    return { ok: true, sys: s, dia: d };
++  }
++
++  function bpStatus(sys, dia) {
++    return (sys > CONFIG.bpSystolicTarget || dia > CONFIG.bpDiastolicTarget) ? 'Above target' : 'At or below target';
++  }
++
+   function filterPatients(list, query) {
+     var q = String(query || '').trim().toLowerCase();
+     if (!q) return list.slice();
+@@ -32,15 +46,21 @@
+     return list.slice().sort(function (a, b) { return (latest(a).a1c - latest(b).a1c) * dir; });
+   }
+ 
+-  function addReading(patient, a1c, date) {
++  function addReading(patient, a1c, date, sys, dia) {
+     var v = validateHbA1c(a1c);
+     if (!v.ok) return v;
+     if (!date) return { ok: false, error: 'Choose a date.' };
+-    patient.readings.push({ a1c: v.value, date: date });
++    var reading = { a1c: v.value, date: date };
++    if (sys !== undefined && sys !== '' || dia !== undefined && dia !== '') {
++      var b = validateBP(sys, dia);
++      if (!b.ok) return b;
++      reading.sys = b.sys; reading.dia = b.dia;
++    }
++    patient.readings.push(reading);
+     return { ok: true };
+   }
+ 
+-  var api = { CONFIG: CONFIG, validateHbA1c: validateHbA1c, a1cStatus: a1cStatus,
++  var api = { CONFIG: CONFIG, validateHbA1c: validateHbA1c, a1cStatus: a1cStatus, validateBP: validateBP, bpStatus: bpStatus,
+               filterPatients: filterPatients, sortByLatest: sortByLatest,
+               addReading: addReading, latest: latest };
+   if (typeof module !== 'undefined' && module.exports) module.exports = api;
+diff --git a/intent.md b/intent.md
+index 04349c2..d5ab601 100644
+--- a/intent.md
++++ b/intent.md
+@@ -1,4 +1,4 @@
+-# Care Companion: intent.md (v1.0)
++# Care Companion: intent.md (v1.1)
+ 
+ ## Purpose
+ Help patients with diabetes log HbA1c readings, and let care coordinators see who needs follow-up.
+@@ -24,8 +24,15 @@ Help patients with diabetes log HbA1c readings, and let care coordinators see wh
+ - A submitted reading appears in the list immediately.
+ - HbA1c values outside 3.0 to 20.0 are rejected.
+ 
++## Change 1.1: Hypertension tracking
++- Patients submit blood pressure (systolic and diastolic) alongside HbA1c.
++- The list shows the latest reading and an "Above target" flag (sample target, set by clinicians).
++- Systolic must be higher than diastolic; impossible values are rejected.
++- Acceptance: invalid readings are rejected; valid ones appear immediately.
++
+ ## Decisions
+ 
+ | # | Decision | Owner | Status | Resolution |
+ | --- | --- | --- | --- | --- |
+ | D1 | Demo uses sample data only | Product owner | Resolved | Yes, no real patient data |
++| D2 | Who approves the "Above target" blood pressure thresholds? | Clinical lead | Open | |
+diff --git a/tests/logic.test.js b/tests/logic.test.js
+index 0d68c8e..94f981a 100644
+--- a/tests/logic.test.js
++++ b/tests/logic.test.js
+@@ -38,3 +38,28 @@ test('sort orders by latest HbA1c', () => {
+   assert.strictEqual(L.sortByLatest(l, 'desc')[0].name, 'B');
+   assert.strictEqual(L.sortByLatest(l, 'asc')[0].name, 'A');
+ });
++
++// Change 1.1: hypertension tracking
++test('blood pressure with systolic above diastolic is accepted', () => {
++  assert.strictEqual(L.validateBP('120', '80').ok, true);
++});
++test('impossible blood pressure is rejected', () => {
++  assert.strictEqual(L.validateBP('80', '120').ok, false);
++  assert.strictEqual(L.validateBP('120', '120').ok, false);
++  assert.strictEqual(L.validateBP('900', '80').ok, false);
++  assert.strictEqual(L.validateBP('', '80').ok, false);
++});
++test('valid blood pressure reading appears immediately', () => {
++  const p = { name: 'T', readings: [{ a1c: 7, date: '2026-01-01' }] };
++  assert.strictEqual(L.addReading(p, '7.2', '2026-02-01', '125', '82').ok, true);
++  assert.strictEqual(L.latest(p).sys, 125);
++});
++test('invalid blood pressure reading is not stored', () => {
++  const p = { name: 'T', readings: [{ a1c: 7, date: '2026-01-01' }] };
++  assert.strictEqual(L.addReading(p, '7.2', '2026-02-01', '80', '125').ok, false);
++  assert.strictEqual(p.readings.length, 1);
++});
++test('blood pressure status uses the configured target', () => {
++  assert.strictEqual(L.bpStatus(L.CONFIG.bpSystolicTarget + 1, 70), 'Above target');
++  assert.strictEqual(L.bpStatus(110, 70), 'At or below target');
++});

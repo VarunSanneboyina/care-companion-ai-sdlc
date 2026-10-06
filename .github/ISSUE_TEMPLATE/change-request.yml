@@ -1,0 +1,63 @@
+# Save this file in your repository at: .github/ISSUE_TEMPLATE/change-request.yml
+# It gives anyone with access (for example Lohi) a structured form under Issues, then New issue.
+name: Change request
+description: Ask for a change to Care Companion
+title: "Change request: "
+labels: ["change-request"]
+body:
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is this needed?
+      description: The business or patient reason, and what happens if we do not do it.
+    validations:
+      required: true
+  - type: textarea
+    id: beneficiaries
+    attributes:
+      label: Who will benefit, and how?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Who is affected, and what happens today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What should be different?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How will it work?
+      description: Step by step, from the user's point of view.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How will we know it works?
+      description: Acceptance criteria, in plain words.
+    validations:
+      required: true
+  - type: dropdown
+    id: touches
+    attributes:
+      label: Does it touch any of these?
+      multiple: true
+      options:
+        - Payments
+        - Login or permissions
+        - Personal or health data
+        - Clinical thresholds or advice
+        - None of these
+  - type: textarea
+    id: unknowns
+    attributes:
+      label: What is still undecided?
+      description: Open questions the product owner should resolve.

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Companion</title>
+<style>
+  :root { --bg:#f6f7f4; --card:#fff; --ink:#1d2a26; --muted:#5d6b66; --line:#dde3df; --accent:#1f6f5c; --warn:#a4501a; --ok:#1f6f5c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12171a; --card:#1a2125; --ink:#e8efec; --muted:#9bb0a8; --line:#2b363b; --accent:#5fc2a8; --warn:#f0a36b; --ok:#5fc2a8; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.5rem; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  input, select, button { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }
+  button { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  .above { color:var(--warn); font-weight:600; }
+  .at { color:var(--ok); }
+  .err { color:var(--warn); min-height:1.4em; }
+  footer { color:var(--muted); font-size:.85rem; }
+  label { font-size:.85rem; color:var(--muted); display:block; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Care Companion</h1>
+  <p class="sub">Patient list with the latest HbA1c. Sample data only.</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label for="q">Search by name</label><input id="q" placeholder="e.g. Asha"></div>
+      <div><label for="sort">Sort by latest HbA1c</label>
+        <select id="sort"><option value="none">None</option><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead><tr><th>Patient</th><th>Latest HbA1c</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <strong>Add a reading</strong>
+    <div class="row" style="margin-top:8px">
+      <div><label for="p">Patient</label><select id="p"></select></div>
+      <div><label for="v">HbA1c (%)</label><input id="v" inputmode="decimal" placeholder="7.4"></div>
+      <div><label for="d">Date</label><input id="d" type="date"></div>
+      <div style="align-self:end"><button id="add">Add</button></div>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+  </div>
+
+  <footer>All patients are invented. This app shows data and status only; it gives no medical advice. Rules: <code>intent.md</code>.</footer>
+</main>
+<script src="logic.js"></script>
+<script>
+  var L = window.CareLogic;
+  var patients = [
+    { name: 'Asha Verma',   readings: [{ a1c: 7.8, date: '2026-08-02' }] },
+    { name: 'Ravi Menon',   readings: [{ a1c: 6.4, date: '2026-08-11' }] },
+    { name: 'Meera Iyer',   readings: [{ a1c: 9.1, date: '2026-07-28' }] },
+    { name: 'Karan Shah',   readings: [{ a1c: 6.9, date: '2026-09-01' }] },
+    { name: 'Latha Nair',   readings: [{ a1c: 8.2, date: '2026-09-10' }] }
+  ];
+  var $ = function (id) { return document.getElementById(id); };
+
+  function render() {
+    var list = L.filterPatients(patients, $('q').value);
+    if ($('sort').value !== 'none') list = L.sortByLatest(list, $('sort').value);
+    var tb = $('rows'); tb.innerHTML = '';
+    list.forEach(function (p) {
+      var r = L.latest(p), s = L.a1cStatus(r.a1c);
+      var tr = document.createElement('tr');
+      [p.name, r.a1c.toFixed(1), r.date].forEach(function (t) { var td = document.createElement('td'); td.textContent = t; tr.appendChild(td); });
+      var td = document.createElement('td'); td.textContent = s; td.className = s === 'Above target' ? 'above' : 'at'; tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    if (!list.length) tb.innerHTML = '<tr><td colspan="4">No patients match.</td></tr>';
+  }
+
+  patients.forEach(function (p, i) { var o = document.createElement('option'); o.value = i; o.textContent = p.name; $('p').appendChild(o); });
+  $('d').value = new Date().toISOString().slice(0, 10);
+  $('q').addEventListener('input', render);
+  $('sort').addEventListener('change', render);
+  $('add').addEventListener('click', function () {
+    var res = L.addReading(patients[Number($('p').value)], $('v').value, $('d').value);
+    $('err').textContent = res.ok ? '' : res.error;
+    if (res.ok) { $('v').value = ''; render(); }
+  });
+  render();
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# The Risk-check agent. Runs when a change request issue is opened or edited.
+name: Risk-check agent
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  risk-check:
+    if: contains(github.event.issue.labels.*.name, 'change-request') || startsWith(github.event.issue.title, 'Change request')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the risk-check agent
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python3 scripts/risk_check.py
+
+      - name: Post the result and route the request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          PO: ${{ vars.PRODUCT_OWNER }}
+        run: |
+          gh label create "risk:auto"     --color 0E8A16 --force || true
+          gh label create "risk:engineer" --color D93F0B --force || true
+          gh label create "po:review"     --color FBCA04 --force || true
+          gh label create "po:approved"   --color 0E8A16 --force || true
+          gh issue edit "$ISSUE" --remove-label "risk:auto" --remove-label "risk:engineer" || true
+          if grep -q '"HUMAN_REVIEW"' result.json; then LANE="risk:engineer"; else LANE="risk:auto"; fi
+          gh issue edit "$ISSUE" --add-label "$LANE" --add-label "po:review"
+          if [ -n "$PO" ]; then gh issue edit "$ISSUE" --add-assignee "$PO" || true; fi
+          gh issue comment "$ISSUE" --body-file comment.md

@@ -1,0 +1,21 @@
+# Save this file in your repository at: .github/workflows/definition-of-ready.yml
+# It runs on every pull request and fails while intent.md still has an Open decision.
+name: Definition of Ready
+
+on:
+  pull_request:
+
+jobs:
+  check-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get the repository
+        uses: actions/checkout@v4
+
+      - name: Fail if any decision is still open
+        run: |
+          if grep -n "| Open |" intent.md; then
+            echo "Open decisions found in intent.md. Resolve them before this change can merge."
+            exit 1
+          fi
+          echo "No open decisions. The spec is ready."

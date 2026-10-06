@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Companion</title>
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  main { max-width:620px; }
+  .hist td.status-above { color:var(--warn); font-weight:600; }
+  .hist td.status-ok { color:var(--ok); }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:14px; text-align:center; }
+  #preview { max-width:100%; max-height:200px; border-radius:8px; display:none; margin:8px auto 0; }
+  .banner { background:var(--warn-bg); color:var(--warn); border-radius:10px; padding:8px 12px; font-size:.85rem; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1>Care Companion</h1><div class="sub">Log your readings</div></div>
+  <span id="badge" class="badge-live chip">…</span>
+</header>
+<main>
+  <div class="banner">Demo with invented patients. Do not upload real medical photos or enter real health information. This app shows your readings and a status against a target set by clinicians. It does not give medical advice.</div>
+
+  <div class="card">
+    <label for="who">Who are you?</label>
+    <select id="who"></select>
+  </div>
+
+  <div class="card">
+    <h2>Your readings</h2>
+    <table class="hist"><thead><tr><th>Date</th><th>HbA1c</th><th id="bphead" style="display:none">Blood pressure</th><th>Status</th></tr></thead><tbody id="hist"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Add a reading</h2>
+    <div class="drop">
+      <label for="photo" style="font-size:.95rem;color:var(--ink)">Take or choose a photo of your HbA1c result</label>
+      <input type="file" id="photo" accept="image/*" capture="environment" style="margin-top:6px">
+      <img id="preview" alt="Your photo">
+      <div class="muted" id="photomsg"></div>
+    </div>
+    <p class="muted">Or type it. Whatever the photo reader finds, you check it before saving.</p>
+    <div class="row">
+      <div><label for="a1c">HbA1c (%)</label><input id="a1c" inputmode="decimal" placeholder="7.4" style="width:110px"></div>
+      <div><label for="date">Date</label><input id="date" type="date" style="width:160px"></div>
+      <div class="bpf" style="display:none"><label for="sys">Systolic</label><input id="sys" inputmode="numeric" placeholder="120" style="width:90px"></div>
+      <div class="bpf" style="display:none"><label for="dia">Diastolic</label><input id="dia" inputmode="numeric" placeholder="80" style="width:90px"></div>
+      <div><button id="save">Save reading</button></div>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script src="shared/shared.js"></script>
+<script>
+  var data = null, source = 'manual';
+  modelBadge($('badge'));
+  $('date').value = new Date().toISOString().slice(0, 10);
+
+  async function load(keep) {
+    data = await api('/api/patients');
+    var cur = keep || $('who').value;
+    $('who').innerHTML = data.patients.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
+    if (cur) $('who').value = cur;
+    var bp = data.flags.bp;
+    document.querySelectorAll('.bpf').forEach(function (e) { e.style.display = bp ? '' : 'none'; });
+    $('bphead').style.display = bp ? '' : 'none';
+    render();
+  }
+  function render() {
+    var p = data.patients.find(function (x) { return x.id === $('who').value; }) || data.patients[0];
+    var bp = data.flags.bp;
+    $('hist').innerHTML = p.readings.slice().reverse().map(function (r) {
+      var above = r.status === 'Above target';
+      return '<tr><td>' + esc(r.date) + '</td><td>' + r.a1c.toFixed(1) + (r.source === 'photo' ? ' <span class="chip">photo</span>' : '') + '</td>' +
+        (bp ? '<td>' + (r.sys ? r.sys + '/' + r.dia : '–') + '</td>' : '') +
+        '<td class="' + (above ? 'status-above' : 'status-ok') + '">' + esc(r.status) + '</td></tr>';
+    }).join('');
+  }
+  $('who').onchange = render;
+
+  // Shrink the photo before upload so it is fast and small. The image is read, then discarded; it is never stored.
+  function shrink(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var max = 1024, k = Math.min(1, max / Math.max(img.width, img.height));
+        var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        var dataUrl = c.toDataURL('image/jpeg', 0.85);
+        $('preview').src = dataUrl; $('preview').style.display = 'block';
+        URL.revokeObjectURL(url);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = function () { reject(new Error('Could not open that photo.')); };
+      img.src = url;
+    });
+  }
+
+  $('photo').onchange = async function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    $('photomsg').textContent = 'Reading your photo…'; $('err').textContent = '';
+    try {
+      var b64 = await shrink(f);
+      var out = await api('/api/vision', { method: 'POST', body: { mediaType: 'image/jpeg', data: b64 } });
+      if (out.kind === 'hba1c' && out.a1c != null) {
+        $('a1c').value = out.a1c; source = 'photo';
+        $('photomsg').textContent = 'The reader found ' + out.a1c + '% (' + out.confidence + ' confidence). Please check it matches your result, then save.';
+      } else if (out.kind === 'bp' && out.sys != null && data.flags.bp) {
+        $('sys').value = out.sys; $('dia').value = out.dia; source = 'photo';
+        $('photomsg').textContent = 'The reader found ' + out.sys + '/' + out.dia + '. Please check, then add your HbA1c and save.';
+      } else {
+        $('photomsg').textContent = (out.note || 'Could not read a value.') + ' Please type it.';
+      }
+    } catch (er) { $('photomsg').textContent = ''; $('err').textContent = er.message; }
+  };
+
+  $('save').onclick = async function () {
+    $('err').textContent = '';
+    try {
+      var body = { a1c: $('a1c').value, date: $('date').value, source: source };
+      if (data.flags.bp) { body.sys = $('sys').value; body.dia = $('dia').value; }
+      await api('/api/patients/' + $('who').value + '/readings', { method: 'POST', body: body });
+      $('a1c').value = ''; $('sys').value = ''; $('dia').value = ''; $('photomsg').textContent = ''; $('preview').style.display = 'none'; $('photo').value = ''; source = 'manual';
+      toast('Reading saved');
+      load($('who').value);
+    } catch (e) { $('err').textContent = e.message; }
+  };
+  load().catch(function (e) { $('err').textContent = e.message; });
+  setInterval(function () { load($('who').value).catch(function () {}); }, 15000); // picks up the feature switch
+</script>
+</body>
+</html>

@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Care Companion Request Workspace</title>
+<link rel="stylesheet" href="shared/style.css">
+<style>
+  .layout { display:grid; grid-template-columns:300px 1fr; gap:14px; }
+  .item { padding:8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; cursor:pointer; background:var(--card); }
+  .item.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:10px; }
+  .tabs button { background:transparent; color:var(--muted); border-color:var(--line); }
+  .tabs button.on { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .msg { padding:8px 10px; border-radius:10px; margin:6px 0; max-width:92%; white-space:pre-wrap; }
+  .msg.assistant { background:var(--info-bg); }
+  .msg.user { background:var(--ok-bg); margin-left:auto; }
+  .msg small { display:block; color:var(--muted); font-size:.72rem; margin-top:2px; }
+  .checks label { display:flex; gap:8px; align-items:center; color:var(--ink); font-size:.95rem; }
+  .checks input { width:auto; }
+  .gate { border-left:4px solid var(--warn); padding-left:10px; }
+  @media (max-width:800px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div><h1>Request Workspace</h1><div class="sub">Collect every detail, draft intent.md, send it to the product owner</div></div>
+  <nav><a id="lnk-cr" href="#">Control Room</a><a id="lnk-pt" href="#">Patient portal</a></nav>
+  <div class="row"><span id="badge" class="badge-live chip">…</span><span id="rolebar"></span></div>
+</header>
+<main>
+  <div class="layout">
+    <div>
+      <div class="card">
+        <h2>New request</h2>
+        <label for="nt">Title</label><input id="nt" placeholder="Short, plain words" maxlength="120">
+        <label for="nw" style="margin-top:6px">What do you want?</label><textarea id="nw" placeholder="Describe it the way you would to a colleague"></textarea>
+        <label for="nn" style="margin-top:6px">Your name</label><input id="nn" placeholder="e.g. Lohi">
+        <div class="row" style="margin-top:8px"><button id="create">Start</button></div>
+        <div class="err" id="cerr"></div>
+      </div>
+      <div class="card">
+        <h2>Requests</h2>
+        <div id="list"><span class="muted">None yet</span></div>
+      </div>
+      <div class="card">
+        <h2>New intent.md</h2>
+        <p class="muted">Tick one or more drafted requests to see the new version of the spec. The product owner approves, then pushes it to GitHub as a pull request.</p>
+        <div id="cmp" class="checks"></div>
+        <button id="compose" class="ghost" style="margin-top:6px">Preview intent.md</button>
+        <div class="err" id="cmperr"></div>
+      </div>
+    </div>
+    <div id="detail"><div class="card muted">Select or create a request.</div></div>
+  </div>
+</main>
+<dialog id="outdlg"></dialog>
+<script src="config.js"></script>
+<script src="shared/shared.js"></script>
+<script>
+  var L = links(); $('lnk-cr').href = L.controlRoom || '#'; $('lnk-pt').href = L.patient || '#';
+  mountRoleBar($('rolebar'), function () { renderDetail(); });
+  var CFG = {}, REQS = [], cur = null, tab = 'chat';
+  modelBadge($('badge')).then(function (c) { CFG = c || {}; });
+
+  async function loadList(keepSel) {
+    var s = await api('/api/state'); REQS = s.requests;
+    $('list').innerHTML = REQS.map(function (r) {
+      return '<div class="item' + (cur && cur.id === r.id ? ' sel' : '') + '" data-id="' + r.id + '"><strong>' + esc(r.id) + '</strong> ' + esc(r.title) +
+        '<div><span class="chip">' + esc(STATUS[r.status] || r.status) + '</span></div></div>';
+    }).join('') || '<span class="muted">None yet</span>';
+    document.querySelectorAll('.item').forEach(function (e) { e.onclick = function () { open(e.dataset.id); }; });
+    $('cmp').innerHTML = REQS.filter(function (r) { return r.hasDraft; }).map(function (r) {
+      return '<label><input type="checkbox" value="' + r.id + '"> ' + esc(r.id) + ' ' + esc(r.title) + '</label>';
+    }).join('') || '<span class="muted">No drafted requests yet</span>';
+  }
+  async function open(id, t) { cur = await api('/api/requests/' + id); if (t) tab = t; await loadList(); renderDetail(); }
+
+  $('create').onclick = async function () {
+    $('cerr').textContent = '';
+    try {
+      var r = await api('/api/requests', { method: 'POST', body: { title: $('nt').value, wish: $('nw').value, requester: $('nn').value } });
+      $('nt').value = ''; $('nw').value = ''; tab = 'chat'; cur = r; await loadList(); renderDetail();
+    } catch (e) { $('cerr').textContent = e.message; }
+  };
+
+  function tabs() {
+    var t = [['chat', '1 Interview'], ['fields', '2 Request'], ['spec', '3 Spec & screen'], ['risk', '4 Risk & review'], ['log', 'Log']];
+    return '<div class="tabs">' + t.map(function (x) { return '<button data-t="' + x[0] + '" class="' + (tab === x[0] ? 'on' : '') + '">' + x[1] + '</button>'; }).join('') + '</div>';
+  }
+  function guard(fn) { return async function () { try { await fn(); } catch (e) { toast(e.message); var el = document.querySelector('.err.act'); if (el) el.textContent = e.message; } }; }
+
+  function renderDetail() {
+    if (!cur) return;
+    var r = cur, editable = ['intake', 'changes_requested'].indexOf(r.status) >= 0;
+    var h = '<div class="card"><div class="row" style="justify-content:space-between"><div><h2 style="margin:0">' + esc(r.id) + ' · ' + esc(r.title) + '</h2><span class="chip">' + esc(STATUS[r.status]) + '</span></div></div>' + tabs() + '<div id="pane"></div></div>';
+    $('detail').innerHTML = h;
+    document.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { tab = b.dataset.t; renderDetail(); }; });
+    var pane = $('pane');
+    if (tab === 'chat') chatPane(pane, r, editable);
+    else if (tab === 'fields') fieldsPane(pane, r, editable);
+    else if (tab === 'spec') specPane(pane, r, editable);
+    else if (tab === 'risk') riskPane(pane, r);
+    else logPane(pane, r);
+  }
+
+  function meter(r) {
+    var total = 7, left = (r.missing || []).length, done = total - left;
+    return '<div class="card" style="padding:10px;margin:8px 0"><strong>Completeness: ' + done + ' of ' + total + '</strong> ' +
+      (left ? '<span class="chip warn">not ready</span><ul style="margin:6px 0 0;padding-left:18px">' + r.missing.map(function (m) { return '<li class="muted">' + esc(m) + '</li>'; }).join('') + '</ul>'
+            : '<span class="chip ok">every required detail is in</span>') + '</div>';
+  }
+
+  // ---- 1 Interview ----
+  function chatPane(p, r, editable) {
+    p.innerHTML = '<p class="muted">The requirement interviewer agent asks one question at a time. <a href="#" id="vi">See its instructions</a></p>' +
+      r.conversation.map(function (m) { return '<div class="msg ' + m.role + '">' + esc(m.content) + (m.layer ? '<small>' + esc(m.layer) + '</small>' : '') + '</div>'; }).join('') +
+      (editable ? '<div class="row" style="margin-top:8px"><div class="grow"><textarea id="cm" placeholder="Your answer"></textarea></div><button id="cs">Send</button></div><div class="err act"></div>' : '') +
+      meter(r) + (r.ready ? '<p class="chip ok" style="margin-top:8px">Interview complete. Review it in 2 Request.</p>' : '');
+    $('vi').onclick = function (e) { e.preventDefault(); showFile('agents/requirement-interviewer.md'); };
+    if (editable) $('cs').onclick = guard(async function () {
+      var msg = $('cm').value; $('cs').disabled = true; $('cs').textContent = 'Thinking…';
+      try { cur = await api('/api/requests/' + r.id + '/chat', { method: 'POST', body: { message: msg } }); } finally { renderDetail(); }
+      if (cur.ready) tab = 'fields', renderDetail();
+    });
+  }
+
+  // ---- 2 Request fields ----
+  function fieldsPane(p, r, editable) {
+    var f = r.fields, opts = CFG.touchOptions || [], dis = editable ? '' : ' disabled';
+    var ta = function (id, label, val, hint) { return '<label style="margin-top:8px">' + label + (hint ? ' <span class="muted">' + hint + '</span>' : '') + '</label><textarea id="' + id + '"' + dis + '>' + esc(val) + '</textarea>'; };
+    p.innerHTML = '<p class="muted">This is the template, filled so far. <a href="#" id="vt">See the template</a> · <a href="#" id="vf">See the GitHub issue form</a></p>' + meter(r) +
+      ta('f_why', 'Why is this needed?', f.why, '(business or patient reason; cost of not doing it)') +
+      ta('f_ben', 'Who will benefit, and how?', f.beneficiaries) +
+      ta('f_prob', 'What happens today that this fixes?', f.problem) +
+      ta('f_out', 'What should be different when it is done?', f.outcome) +
+      ta('f_how', 'How will it work, step by step?', f.howItWorks) +
+      ta('f_acc', 'How will we know it works?', f.acceptance.join('\n'), '(one check per line, at least two)') +
+      '<label style="margin-top:8px">Does it touch any of these?</label><div class="checks" id="f_touch">' + opts.map(function (o) { return '<label><input type="checkbox" value="' + esc(o) + '"' + (f.touches.indexOf(o) >= 0 ? ' checked' : '') + dis + '> ' + esc(o) + '</label>'; }).join('') + '</div>' +
+      ta('f_scope', 'Out of scope (optional)', f.outOfScope) +
+      ta('f_und', 'Still undecided (optional)', f.undecided.map(function (u) { return u.question + ' | ' + u.owner; }).join('\n'), '(one per line: question | who decides)') +
+      (editable ? '<div class="row" style="margin-top:8px"><button id="fs">Save</button></div><div class="err act"></div>' : '');
+    $('vt').onclick = function (e) { e.preventDefault(); showFile('templates/intent-template.md'); };
+    $('vf').onclick = function (e) { e.preventDefault(); showFile('.github/ISSUE_TEMPLATE/change-request.yml'); };
+    if (editable) $('fs').onclick = guard(async function () {
+      var lines = function (id) { return $(id).value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); };
+      var fields = {
+        why: $('f_why').value, beneficiaries: $('f_ben').value, problem: $('f_prob').value, outcome: $('f_out').value, howItWorks: $('f_how').value,
+        acceptance: lines('f_acc'), outOfScope: $('f_scope').value,
+        touches: Array.prototype.map.call(document.querySelectorAll('#f_touch input:checked'), function (x) { return x.value; }),
+        undecided: lines('f_und').map(function (x) { var q = x.split('|'); return { question: q[0].trim(), owner: (q[1] || 'Product owner').trim() }; }),
+      };
+      cur = await api('/api/requests/' + r.id + '/fields', { method: 'POST', body: { fields: fields } });
+      await loadList(); toast('Saved'); renderDetail();
+    });
+  }
+
+  // ---- 3 Spec & screen ----
+  function specPane(p, r, editable) {
+    var isPO = getRole() === 'product_owner';
+    p.innerHTML = '<p class="muted">The spec drafter and design agents turn the request into a section for intent.md and a screen description. <a href="#" id="v1">Spec drafter instructions</a> · <a href="#" id="v2">Design agent instructions</a></p>' +
+      (editable ? (r.ready ? '' : meter(r)) + '<button id="dr"' + (r.ready ? '' : ' disabled') + '>' + (r.draft ? 'Redraft' : 'Draft with Claude') + '</button><div class="err act"></div>' : '') +
+      (r.draft ? '<h3>Section for intent.md</h3><pre>' + esc(r.draft.section) + '</pre><h3>Screen description</h3><pre>' + esc(r.draft.screen) + '</pre><div class="muted">Written by: ' + esc(r.draft.layer) + '</div>' +
+        '<h3>Decisions to settle (' + r.decisions.length + ')</h3>' + (r.decisions.map(function (d, i) {
+          return '<div class="card" style="padding:10px"><div><span class="chip ' + (d.status === 'Resolved' ? 'ok' : 'warn') + '">' + d.status + '</span> ' + esc(d.question) + ' <span class="muted">Owner: ' + esc(d.owner) + '</span></div>' +
+            (isPO && r.status === 'po_review' ? '<div class="row" style="margin-top:6px"><div class="grow"><input id="dec' + i + '" placeholder="Resolution" value="' + esc(d.resolution) + '"></div><button class="ghost" data-i="' + i + '">Save</button></div>' : (d.resolution ? '<div class="muted">Resolution: ' + esc(d.resolution) + '</div>' : '')) + '</div>';
+        }).join('') || '<p class="muted">None.</p>') : '');
+    $('v1').onclick = function (e) { e.preventDefault(); showFile('agents/spec-drafter.md'); };
+    $('v2').onclick = function (e) { e.preventDefault(); showFile('agents/design-agent.md'); };
+    if (editable) $('dr').onclick = guard(async function () {
+      $('dr').disabled = true; $('dr').textContent = 'Drafting…';
+      try { cur = await api('/api/requests/' + r.id + '/draft', { method: 'POST' }); } finally { renderDetail(); }
+    });
+    p.querySelectorAll('button[data-i]').forEach(function (b) {
+      b.onclick = guard(async function () {
+        cur = await api('/api/requests/' + r.id + '/decisions/' + b.dataset.i, { method: 'POST', body: { resolution: $('dec' + b.dataset.i).value } }); toast('Saved'); renderDetail();
+      });
+    });
+  }
+
+  // ---- 4 Risk & review ----
+  function riskPane(p, r) {
+    var role = getRole(), h = '';
+    h += '<p class="muted"><a href="#" id="v3">Risk-check agent instructions</a> · <a href="#" id="v4">Engineer review checklist</a> · <a href="#" id="v5">Risk rules in code</a></p>';
+    if (['intake', 'changes_requested'].indexOf(r.status) >= 0) {
+      h += '<p>Submitting runs the Risk-check agent and routes the request to the product owner.</p>' +
+        '<button id="sub"' + (r.draft ? '' : ' disabled') + '>Submit for review</button>' + (r.draft ? '' : ' <span class="muted">Draft the spec first (tab 3).</span>') + '<div class="err act"></div>';
+      if (r.po && r.po.note) h += '<p class="chip warn" style="margin-top:8px">Product owner: ' + esc(r.po.note) + '</p>';
+      if (r.engineer && r.engineer.note) h += '<p class="chip warn">Engineer: ' + esc(r.engineer.note) + '</p>';
+    }
+    if (r.risk) {
+      var eng = r.risk.verdict === 'HUMAN_REVIEW';
+      h += '<div class="card ' + (eng ? 'gate' : '') + '"><strong>' + (eng ? 'Engineer review required' : 'Fast lane') + '</strong>' +
+        '<div class="muted">Categories: ' + esc(r.risk.categories.join(', ') || 'none') + '</div><div>' + esc(r.risk.reason) + '</div>' +
+        (r.risk.checklist.length ? '<h3>Checklist for the reviewer</h3><ul>' + r.risk.checklist.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') + '</ul>' : '') +
+        '<div class="muted">Checked by: ' + esc(r.risk.layer) + '</div></div>';
+    }
+    if (r.status === 'po_review') {
+      h += '<div class="card"><h3 style="margin-top:0">Product owner decision</h3>' +
+        (role === 'product_owner' ? '<label>Note</label><input id="pn"><div class="row" style="margin-top:8px"><button id="pa">Approve</button><button id="pc" class="ghost">Request changes</button><button id="pr" class="danger">Reject</button></div><div class="err act"></div>' : '<p class="muted">Waiting for the product owner. Switch "Acting as" to Product owner to review.</p>') + '</div>';
+    }
+    if (r.status === 'engineer_review') {
+      h += '<div class="card"><h3 style="margin-top:0">Engineer decision</h3>' +
+        (role === 'engineer' ? '<label>Note</label><input id="en"><div class="row" style="margin-top:8px"><button id="ea">Approve</button><button id="ec" class="ghost">Request changes</button></div><div class="err act"></div>' : '<p class="muted">Waiting for an engineer. Switch "Acting as" to Engineer.</p>') + '</div>';
+    }
+    if (r.status === 'approved' || r.status === 'released') {
+      h += '<div class="card"><h3 style="margin-top:0">Approved: ready for the code agent</h3><p class="muted">Follows <a href="#" id="v6">agents/code-agent.md</a>. Copy the brief into Claude Code, or send it to GitHub where the same risk check and pipeline run.</p>' +
+        '<div class="row"><button id="pv" class="ghost">Preview new intent.md</button>' +
+        (r.status === 'approved' && role === 'product_owner' ? '<button id="gh"' + (CFG.github ? '' : ' disabled title="GitHub is not connected"') + '>Push to GitHub as pull request</button>' : '') +
+        '<button id="br" class="ghost">Show build brief</button>' + (r.status === 'approved' && role === 'engineer' ? '<button id="rel">Mark released</button>' : '') + '</div>' +
+        (r.status === 'approved' && role === 'product_owner' && !CFG.github ? '<p class="muted">GitHub is not connected on the API (GITHUB_TOKEN and GITHUB_REPO). You can still preview and download the intent.md.</p>' : '') +
+        (r.github ? '<p>Pull request: <a href="' + esc(r.github.url) + '" target="_blank" rel="noopener">#' + r.github.number + '</a> (' + esc(r.github.branch || '') + ')</p>' : '') + '<div class="err act"></div></div>';
+    }
+    p.innerHTML = h;
+    var bind = function (id, fn) { var el = $(id); if (el) el.onclick = guard(fn); };
+    $('v3').onclick = function (e) { e.preventDefault(); showFile('agents/risk-check-agent.md'); };
+    $('v4').onclick = function (e) { e.preventDefault(); showFile('agents/engineer-review-checklist.md'); };
+    $('v5').onclick = function (e) { e.preventDefault(); showFile('app/lib/risk.js'); };
+    var v6 = $('v6'); if (v6) v6.onclick = function (e) { e.preventDefault(); showFile('agents/code-agent.md'); };
+    bind('sub', async function () { $('sub').disabled = true; $('sub').textContent = 'Checking…'; try { cur = await api('/api/requests/' + r.id + '/submit', { method: 'POST' }); } finally { await loadList(); renderDetail(); } });
+    var po = function (d) { return async function () { cur = await api('/api/requests/' + r.id + '/po', { method: 'POST', body: { decision: d, note: $('pn').value } }); await loadList(); renderDetail(); }; };
+    bind('pa', po('approve')); bind('pc', po('changes')); bind('pr', po('reject'));
+    var en = function (d) { return async function () { cur = await api('/api/requests/' + r.id + '/engineer', { method: 'POST', body: { decision: d, note: $('en').value } }); await loadList(); renderDetail(); }; };
+    bind('ea', en('approve')); bind('ec', en('changes'));
+    bind('br', async function () { var b = await api('/api/requests/' + r.id + '/brief'); $('outdlg').innerHTML = '<div class="row" style="justify-content:space-between"><strong>Build brief</strong><button class="ghost" id="oc">Close</button></div><pre>' + esc(b.brief) + '</pre><button id="cp">Copy</button>'; $('outdlg').showModal(); $('oc').onclick = function () { $('outdlg').close(); }; $('cp').onclick = function () { navigator.clipboard.writeText(b.brief).then(function () { toast('Copied'); }); }; });
+    bind('pv', function () { return previewDoc([r.id]); });
+    bind('gh', async function () { var o = await api('/api/intent/push', { method: 'POST', body: { ids: [r.id] } }); toast('Pull request #' + o.number + ' opened'); cur = await api('/api/requests/' + r.id); await loadList(); renderDetail(); });
+    bind('rel', async function () { cur = await api('/api/requests/' + r.id + '/release', { method: 'POST' }); await loadList(); renderDetail(); });
+  }
+
+  function logPane(p, r) { p.innerHTML = '<p class="muted">Full history is also on the Control Room.</p><p class="muted">Created ' + fmtTime(r.createdAt) + ' by ' + esc(r.requester) + '.</p>'; }
+
+  // ---- compose / preview the new intent.md ----
+  async function previewDoc(ids) {
+    var o = await api('/api/intent/compose', { method: 'POST', body: { ids: ids } });
+    var reqs = await Promise.all(ids.map(function (i) { return api('/api/requests/' + i); }));
+    var allApproved = reqs.every(function (r) { return r.status === 'approved'; });
+    var canPush = CFG.github && getRole() === 'product_owner' && allApproved && o.ready;
+    $('outdlg').innerHTML = '<div class="row" style="justify-content:space-between"><strong>New intent.md (v' + esc(o.version) + ')</strong><button class="ghost" id="oc">Close</button></div>' +
+      '<p><span class="chip ' + (o.ready ? 'ok' : 'warn') + '">' + (o.ready ? 'Definition of Ready: passes' : 'Definition of Ready: fails, ' + o.openDecisions + ' decision(s) Open') + '</span> ' +
+      '<span class="chip ' + (allApproved ? 'ok' : 'warn') + '">' + (allApproved ? 'all approved' : 'not all approved yet') + '</span></p><pre>' + esc(o.markdown) + '</pre>' +
+      '<div class="row"><button id="cp">Copy</button><button class="ghost" id="dl">Download intent.md</button>' + (canPush ? '<button id="pu">Push as pull request</button>' : '') + '</div><div class="err" id="pe"></div>';
+    $('outdlg').showModal();
+    $('oc').onclick = function () { $('outdlg').close(); };
+    $('cp').onclick = function () { navigator.clipboard.writeText(o.markdown).then(function () { toast('Copied'); }); };
+    $('dl').onclick = function () { var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([o.markdown], { type: 'text/markdown' })); a.download = 'intent.md'; a.click(); };
+    if (canPush) $('pu').onclick = async function () {
+      try { var pr = await api('/api/intent/push', { method: 'POST', body: { ids: ids } }); $('outdlg').close(); toast('Pull request #' + pr.number + ' opened'); if (cur) { cur = await api('/api/requests/' + cur.id); } await loadList(); renderDetail(); }
+      catch (e) { $('pe').textContent = e.message; }
+    };
+  }
+  $('compose').onclick = async function () {
+    $('cmperr').textContent = '';
+    var ids = Array.prototype.map.call(document.querySelectorAll('#cmp input:checked'), function (x) { return x.value; });
+    try { await previewDoc(ids); } catch (e) { $('cmperr').textContent = e.message; }
+  };
+
+  loadList().catch(function (e) { $('list').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; });
+  setInterval(function () { loadList().catch(function () {}); }, 8000);
+</script>
+</body>
+</html>

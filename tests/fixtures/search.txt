@@ -1,0 +1,19 @@
+### What problem are you trying to solve?
+
+Coordinators cannot find a patient quickly.
+
+### What should be different?
+
+Add sort by latest HbA1c.
+
+### How will we know it works?
+
+Sorting works.
+
+### Does it touch any of these?
+
+None of these
+
+### What is still undecided?
+
+_No response_

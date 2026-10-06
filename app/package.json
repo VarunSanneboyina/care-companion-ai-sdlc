@@ -1,0 +1,11 @@
+{
+  "name": "care-companion-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Control Room, request workspace and patient portal for the Care Companion AI SDLC demo. No dependencies.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test --test-force-exit test/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}

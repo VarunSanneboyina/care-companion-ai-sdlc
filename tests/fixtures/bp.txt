@@ -1,0 +1,15 @@
+### What problem are you trying to solve?
+
+We want to track hypertension too.
+
+### What should be different?
+
+Patients submit blood pressure and see an Above target flag.
+
+### Does it touch any of these?
+
+Personal or health data, Clinical thresholds or advice
+
+### What is still undecided?
+
+Who approves the thresholds?
