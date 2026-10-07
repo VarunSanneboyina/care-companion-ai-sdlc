@@ -13,5 +13,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/*.test.js
+      - run: node --test --test-force-exit tests/*.test.js
       - run: node --test --test-force-exit app/test/*.test.js

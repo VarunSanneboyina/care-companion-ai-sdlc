@@ -43,7 +43,7 @@ If an Action fails, open it and read the red step; nothing here is hidden. Not t
 6. **Product owner**: show the assignment and `po:review`. Add `po:approved`. Show the handoff comment.
 7. **Build**: show `agents/code-agent.md`; open the rehearsed pull request. Show the Definition of Ready failing, then resolving D2.
 8. **Engineer**: show `agents/engineer-review-checklist.md` and CODEOWNERS forcing a human. Merge. Pages redeploys; refresh the app to see blood pressure.
-9. **Limits (say these first, do not wait to be asked)**: the interviewer and code agents are run by me with Claude, not yet triggered automatically; the risk check reads text, not code, and engineers sample the fast lane; sample data only.
+9. **Limits (say these first, do not wait to be asked)**: the code agent opens a pull request but never merges, and its code quality is judged by a human reviewer; GitHub does not run the normal CI on pull requests opened by Actions, so the agent runs the tests itself before opening one; the risk check reads text, not code, and engineers sample the fast lane; sample data only.
 
 ## 7. Questions Lohi may ask, and honest answers
 - **How did you create the intent.md template?** I listed what engineers always have to ask after a vague request, kept only the questions whose missing answer caused rework, and matched the fields to the issue form and risk categories. Reasoning is at the bottom of `templates/intent-template.md`. I drafted it with Claude and edited it myself.
@@ -52,7 +52,7 @@ If an Action fails, open it and read the red step; nothing here is hidden. Not t
 - **What goes to the risk agent and to the engineer?** Risk agent: the request, intent.md, CLAUDE.md. Engineer: the request, risk categories, a specific checklist, the diff and the tests.
 - **What if the model is wrong?** Rules run first and the stricter result wins; the model can only escalate. Engineers sample fast-lane changes.
 - **Why GitHub?** Every step leaves a record: who requested, who approved, what changed, which checks passed. That is the audit trail.
-- **What would you do next?** Trigger the code agent from the approval label with the Claude Code GitHub Action, add evals for the risk agent on a labelled set of past requests, and a feature switch for staged rollout.
+- **What would you do next?** Run the full CI on the agent's pull requests (use a deploy token instead of the default one), add evals for the code agent and for the risk agent on a labelled set of past requests, and a feature switch for staged rollout.
 
 ## 8. Cost and safety
 The model call is one short message per request; cost is negligible. Never put real patient data in an issue. Never commit your API key; it lives only in Actions secrets.

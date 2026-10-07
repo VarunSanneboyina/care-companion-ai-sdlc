@@ -167,6 +167,18 @@ Free plan note: the API sleeps when idle and takes up to a minute to wake. Open 
 
 ---
 
+## Step 5b: Switch on the code agent (so the merged spec becomes code)
+
+After the product owner's `intent.md` pull request is merged, a GitHub Action called **Code agent** reads the change, asks Claude to write the code and tests, runs the tests, and opens a second pull request. You review and merge that one.
+
+1. GitHub, your repo, **Settings**, **Secrets and variables**, **Actions**, **New repository secret**. Name: `ANTHROPIC_API_KEY`. Value: your Claude key (typed here, never in chat). Save.
+2. **Settings**, **Actions**, **General**, scroll to **Workflow permissions**, choose **Read and write permissions**, tick **Allow GitHub Actions to create and approve pull requests**, Save.
+3. Done. Nothing else to deploy.
+
+How to know it is ready: **Actions** tab shows a workflow named **Code agent**.
+
+---
+
 ## Step 6: How everything connects (one table)
 
 | Setting | Set on | Value comes from | What it does |
@@ -214,6 +226,14 @@ Open the **Workspace**. Leave "Acting as" on **Requester**.
 
 The Control Room, open in another tab, shows the request move across the board and every step in the activity log.
 
+**Then the code agent (the new part).**
+11. Merge the `intent.md` pull request. Open the **Actions** tab. **Expected**: a **Code agent** run starts within a minute and takes 2 to 5 minutes.
+12. **Expected**: a new pull request titled by the agent, from a branch `agent/code-...`, listing the files changed, the test result, the risk lane and how to switch it off. Anything touching health data is labelled `risk:engineer`.
+13. Read the pull request like a reviewer. Merge it. Render redeploys the API and sites (a few minutes). Open the Patient Portal: the enhancement is there.
+14. If the agent cannot build without guessing (the spec lacks a number or rule), it opens an **issue** with its questions instead of a pull request. That is the intended behaviour: answer by changing the spec.
+
+If the Code agent run fails: open it, read the summary at the top. Typical causes: the `ANTHROPIC_API_KEY` secret is missing, the "create pull requests" setting is off, or the agent could not get tests to pass in 3 attempts (no pull request is opened in that case).
+
 ### Test 3: the Patient Portal
 1. Open the Patient Portal on your phone.
 2. Choose a patient. Add an HbA1c of `25`. **Expected**: refused (range is 3.0 to 20.0).
@@ -230,7 +250,7 @@ These run by themselves on every change (GitHub, Actions tab, "Tests"). To run t
 node --test tests/*.test.js
 cd app && npm test
 ```
-Expect 7 and 29 passing.
+Expect 14 and 29 passing.
 
 ---
 

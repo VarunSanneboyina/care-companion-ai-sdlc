@@ -1,8 +1,8 @@
 # Test cases
 
-Two kinds: **automated** (34 tests that run by themselves, with a fake Claude and a fake GitHub so they are free and repeatable) and **manual** (what you do with your own hands on the live demo). Tests prove the rules work; they do not prove Claude's wording is good, which is why the manual list exists.
+Two kinds: **automated** (43 tests that run by themselves, with a fake Claude and a fake GitHub so they are free and repeatable) and **manual** (what you do with your own hands on the live demo). Tests prove the rules work; they do not prove Claude's wording is good, which is why the manual list exists.
 
-Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm test` (29 tests). They also run on every change in GitHub, Actions tab, "Tests".
+Run automated tests: `node --test tests/*.test.js` (14 tests) and `cd app && npm test` (29 tests). They also run on every change in GitHub, Actions tab, "Tests".
 
 ## A. Automated: the rules in `docs/logic.js` (7 tests)
 
@@ -87,6 +87,20 @@ Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm 
 | B26 | The access code protects the API; CORS allows the separate sites | Strangers cannot spend your Claude credit; the three sites can call the API from their own addresses |
 | B27 | The three front-ends are served locally | Local run works with one command |
 
+## B2. Automated: the code agent runner (7 tests, `tests/code-agent.test.js`, fake Claude)
+
+| # | Test | What it proves |
+| --- | --- | --- |
+| E1 | A good plan is applied, tests pass, a pull request would open; the model was shown the spec change | The happy path |
+| E2 | Edits to `.github/` or other forbidden files are rejected and the model must correct itself | The agent cannot change its own rules or workflows |
+| E3 | A `find` text that does not match exactly once is rejected | Edits are exact, never fuzzy |
+| E4 | Failing tests go back to the model; after three failures no pull request opens and the tree is restored | Nothing broken is ever proposed |
+| E5 | The model can ask questions instead of guessing | The "do not invent a rule" principle |
+| E6 | An Open decision in `intent.md` blocks the build before the model is called | Definition of Ready is enforced in code |
+| E7 | Without an API key it stops and changes nothing | Fails safe |
+
+These prove the rules around the model. They do not prove that Claude writes good code; judge that by reading the real pull request (C26 to C29).
+
 ## C. Manual tests on the live demo
 
 Use sample data only. Tick each when it passes.
@@ -122,6 +136,12 @@ Use sample data only. Tick each when it passes.
 - [ ] C20. Add HbA1c `25`: refused. `2.9`: refused. `abc`: refused. `7.2` with tomorrow's date: refused.
 - [ ] C21. Photograph a clearly written "7.4": the box fills with 7.4 and you confirm it. Photograph a table or a blurry page: it says it could not read it.
 - [ ] C22. Control Room, Product owner, tick the blood pressure switch: the fields appear on the portal within about 15 seconds. Enter systolic 80, diastolic 120: refused. Untick the switch: the fields disappear.
+
+**Code agent**
+- [ ] C26. Merge an approved `intent.md` pull request. A **Code agent** run starts in the Actions tab.
+- [ ] C27. It opens a pull request from `agent/code-...` with the files changed, test result, risk lane and switch-off note. Read the code: does it do only what the spec says, with a test?
+- [ ] C28. Merge it. After Render redeploys, the enhancement appears on the Patient Portal.
+- [ ] C29. Merge a spec change that leaves out a needed rule (for example, no allowed range). The agent opens an issue with questions instead of a pull request.
 
 **Access and failure**
 - [ ] C23. Open the API without the access code from a private window: refused.

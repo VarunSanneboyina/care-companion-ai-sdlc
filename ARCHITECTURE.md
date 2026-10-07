@@ -95,7 +95,7 @@ Anything that must be right every time is code. Anything that is about wording o
 - Roles are a menu, not real login. The access code and role codes keep casual visitors out, but a production system needs proper sign-in and per-user permissions.
 - Data is a JSON file. On Render's free plan it resets when the service restarts. Production needs a database, backups and encryption.
 - Sample patients only. Real patient data would need a compliance review, a data agreement with the model provider, and audit controls.
-- The code agent is not triggered automatically; a human runs it with Claude Code from the build brief.
+- The code agent runs automatically after an `intent.md` change is merged, but it only opens a pull request. A human reviews and merges. Its code quality depends on the model and the spec; the runner guarantees the rules around it (allowed files, exact edits, passing tests, no guessing), not that the code is good.
 - The risk check reads text, not code. Tests and human review remain the safety net.
 - The free Render API sleeps when idle; the first request after a pause takes about a minute.
 

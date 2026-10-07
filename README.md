@@ -43,7 +43,7 @@ Business person -> Change request (issue form)
 Real in the platform: requests are captured by a Claude interviewer, drafted into intent.md sections by Claude, risk-checked (rules plus Claude), routed to a product owner and engineer with enforced roles, and patients can add readings and photos that Claude reads and code validates. Needs `ANTHROPIC_API_KEY`; without it the app runs in clearly labelled scripted mode.
 
 Real in the repository: the issue form, the risk-check agent (rules always; model if you add an API key), labels, assignment, comments, tests, the Definition of Ready check, the deployment.
-Not automated here: the requirement interviewer and design agent are instruction files you run in Claude (chat or Claude Code); the code agent is run by you with Claude Code. Wiring those to run on a label is a documented next step, not part of this demo.
+Not automated here: the requirement interviewer and design agent are instruction files you run in Claude (chat or Claude Code); the code agent is a GitHub Action (`.github/workflows/code-agent.yml`, `scripts/code_agent.js`) that starts when an `intent.md` change is merged and opens a pull request with the code and tests. It needs the `ANTHROPIC_API_KEY` repository secret.
 All patients are invented. Blood pressure targets in the rehearsed change are placeholders pending sign-off (decision D2), not clinical guidance.
 
 See `SETUP.md` to put this on GitHub and `SETUP.md` section 6 for the demo script.
