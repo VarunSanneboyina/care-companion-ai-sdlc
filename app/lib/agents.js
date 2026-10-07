@@ -50,6 +50,9 @@ async function interview(req) {
     '\n\n--- TEMPLATE ---\n' + files.read('templates/intent-template.md') +
     '\n\n--- FIELDS SO FAR ---\n' + JSON.stringify(req.fields) + '\n' + FIELDS_SPEC;
   const messages = req.conversation.map((m) => ({ role: m.role, content: m.content }));
+  // Remind the model of the output format right where it reads the latest answer.
+  const last = messages[messages.length - 1];
+  messages[messages.length - 1] = { role: last.role, content: last.content + '\n\n[Reply with ONLY the JSON object described in your instructions.]' };
   try {
     const r = await claude.askJson({ system, messages, maxTokens: 1000 });
     const f = F.normalize(r.fields || {}, req.fields); // empty/missing keys keep earlier answers
@@ -61,6 +64,11 @@ async function interview(req) {
     if (!r.ready && miss.length === 0 && !reply) ready = true;
     return { reply, fields: f, ready, layer: 'model (' + claude.model() + ')' };
   } catch (e) {
+    // Claude answered, but not as JSON. Use its own words as the next message rather than dropping to canned questions.
+    if (e.raw && e.raw.length > 3 && !/^\s*[\[{]/.test(e.raw)) {
+      const miss = F.missing(req.fields);
+      return { reply: e.raw.slice(0, 1200), fields: req.fields, ready: false, missing: miss, layer: 'model (' + claude.model() + ', plain-text reply: answers were not captured into the template, so please edit them in tab 2)' };
+    }
     const s = scriptedInterview(req);
     s.layer = 'scripted (model call failed: ' + e.message.slice(0, 80) + ')';
     return s;

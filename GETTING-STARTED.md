@@ -230,7 +230,7 @@ These run by themselves on every change (GitHub, Actions tab, "Tests"). To run t
 node --test tests/*.test.js
 cd app && npm test
 ```
-Expect 7 and 27 passing.
+Expect 7 and 29 passing.
 
 ---
 

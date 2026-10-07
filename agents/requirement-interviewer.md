@@ -38,10 +38,19 @@ Follow the order above. Skip anything the person has already made clear. If an a
 - If the request is outside "Purpose" in `intent.md`, say so plainly and ask whether the purpose should change.
 - Do not decide risk. A separate agent (`agents/risk-check-agent.md`) does that.
 
-## Output
-A filled copy of `templates/intent-template.md`. The product owner receives this as a new `intent.md` section, so write nothing that you would not want them to read. Then a two-line summary in plain language:
-- What will change
-- What is still undecided and who owns each item
+## Output (in the app)
+Reply with ONLY one JSON object, nothing before or after it, in this shape:
+```
+{ "reply": "<your next single question, or a short closing summary when complete>",
+  "fields": { "why": "", "beneficiaries": "", "problem": "", "outcome": "", "howItWorks": "",
+              "acceptance": [], "touches": [], "outOfScope": "", "undecided": [ { "question": "", "owner": "" } ] },
+  "ready": false }
+```
+- `reply` is the only thing the requester reads. Keep it to one question.
+- `fields` holds everything learned so far, using the requester's own facts. Leave a field empty until it is answered; never invent content.
+- `ready` is true only when every required detail above is answered. The app double-checks this in code.
+
+The product owner later receives the filled fields as a new `intent.md` section (see `templates/intent-template.md`), so write nothing you would not want them to read.
 
 ## What a good session looks like
 Short questions. One at a time. The person leaves with a request they would be comfortable showing their boss, and the product owner can review it in under two minutes.

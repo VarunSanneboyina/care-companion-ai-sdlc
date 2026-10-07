@@ -2,9 +2,14 @@
 // A stand-in for the Anthropic API so the app can be tested without a key or network.
 const http = require('http');
 
+let mode = 'json'; // 'json' | 'prose-then-json' | 'prose'
+function setMode(m) { mode = m; }
+
 function reply(system, body) {
   const last = body.messages[body.messages.length - 1];
   const lastText = typeof last.content === 'string' ? last.content : '';
+  const isRetry = /not valid JSON/.test(lastText);
+  if (mode === 'prose' || (mode === 'prose-then-json' && !isRetry)) return 'Thanks! Could you tell me a bit more about who will benefit from this?';
   if (/Vision Reader/.test(system)) {
     return JSON.stringify({ kind: 'hba1c', a1c: 7.4, sys: null, dia: null, confidence: 'high', note: 'Reads 7.4 %' });
   }
@@ -40,4 +45,4 @@ function start(port) {
   });
   return new Promise((resolve) => srv.listen(port, () => resolve({ srv, calls })));
 }
-module.exports = { start };
+module.exports = { start, setMode };

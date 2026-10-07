@@ -2,7 +2,7 @@
 
 Two kinds: **automated** (34 tests that run by themselves, with a fake Claude and a fake GitHub so they are free and repeatable) and **manual** (what you do with your own hands on the live demo). Tests prove the rules work; they do not prove Claude's wording is good, which is why the manual list exists.
 
-Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm test` (27 tests). They also run on every change in GitHub, Actions tab, "Tests".
+Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm test` (29 tests). They also run on every change in GitHub, Actions tab, "Tests".
 
 ## A. Automated: the rules in `docs/logic.js` (7 tests)
 
@@ -16,7 +16,7 @@ Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm 
 | A6 | Search filters by name, case-insensitive | Existing feature keeps working |
 | A7 | Sort orders by latest HbA1c | Existing feature keeps working |
 
-## B. Automated: the platform API (27 tests)
+## B. Automated: the platform API (29 tests)
 
 **Setup and the Claude link**
 
@@ -71,6 +71,13 @@ Run automated tests: `node --test tests/*.test.js` (7 tests) and `cd app && npm 
 | B22 | HbA1c is validated in code; blood pressure is refused while the feature is off | Out-of-range, future-dated and unauthorised data are rejected on the server, not just in the browser |
 | B23 | Kill switch: requester cannot flip it; product owner can; blood pressure then works and validates | Features can be switched off without a release |
 | B24 | Vision: the model's value is validated by code and the photo is not stored | Claude reads, code checks, the image is discarded |
+
+**Real-world Claude behaviour**
+
+| # | Test | What it proves |
+| --- | --- | --- |
+| B28 | If Claude answers in prose once, the app asks again and recovers | A chatty reply does not break the interview; the app tells Claude to answer in the required format and retries |
+| B29 | If Claude keeps answering in prose, its own words are shown, not canned questions | The worst case still gives a sensible next question and nothing crashes |
 
 **Security and hosting**
 

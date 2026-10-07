@@ -308,3 +308,28 @@ test('scripted mode (no model key) still runs the interview and enforces complet
     assert.strictEqual(r.json.fields.acceptance.length, 2);
   } finally { process.env.ANTHROPIC_API_KEY = saved; }
 });
+
+// ---------- real-world Claude behaviour: answering in prose instead of JSON ----------
+test('if Claude answers in prose once, the app asks again and recovers', async () => {
+  mock.setMode('prose-then-json');
+  try {
+    const before = M.calls.length;
+    const r = await call('POST', '/api/requests', { title: 'Prose then JSON', wish: 'Sort the list' });
+    assert.strictEqual(r.status, 200);
+    assert.match(r.json.conversation[1].layer, /^model/);
+    assert.ok(M.calls.length - before >= 2, 'a corrective second call was made');
+    assert.ok(!/scripted/.test(r.json.conversation[1].layer));
+  } finally { mock.setMode('json'); }
+});
+
+test('if Claude keeps answering in prose, its own words are shown (not canned questions) and nothing breaks', async () => {
+  mock.setMode('prose');
+  try {
+    const r = await call('POST', '/api/requests', { title: 'Always prose', wish: 'Sort the list' });
+    assert.strictEqual(r.status, 200);
+    const msg = r.json.conversation[1];
+    assert.match(msg.content, /who will benefit/);
+    assert.match(msg.layer, /plain-text reply/);
+    assert.strictEqual(r.json.ready, false);
+  } finally { mock.setMode('json'); }
+});
